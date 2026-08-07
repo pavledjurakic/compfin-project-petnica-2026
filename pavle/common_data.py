@@ -26,7 +26,7 @@ def load_split(val_frac=0.2, ratio_fraud_pct=40, seed=SEED, node_pool=None, retu
     kandidati se biraju SAMO medju tim indeksima -- za eksperimente na malom podgrafu."""
     np.random.seed(seed)
 
-    data = np.load(r"C:\Users\BG Computers\OneDrive\Radna površina\CompFin - projekat\dgraphfin.npz")
+    data = np.load("dgraphfin.npz")
     x, y = data["x"], data["y"]
 
     if node_pool is not None:
