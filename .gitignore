@@ -1,0 +1,6 @@
+.DS_Store
+dgraphfin.npz
+
+**.pyc
+**.png
+subgraph_k30_N1.txt
