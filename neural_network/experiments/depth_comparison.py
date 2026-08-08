@@ -167,13 +167,10 @@ if __name__ == "__main__":
         )
         print(f"    -> FINALNO: val_loss={val_losses[-1]:.4f}  val_acc={val_accs[-1]*100:.2f}%  val_f1={val_f1s[-1]:.4f}")
 
-    # ===========================================================
-    # JEDAN veliki plot: tekstualni objasnjavajuci panel + 4x3 grid (loss/acc/F1 po dubini)
-    # ===========================================================
     fig = plt.figure(figsize=(18, 20))
     gs = GridSpec(6, 3, height_ratios=[1.3, 1, 1, 1, 1, 0.55], hspace=0.55, wspace=0.3)
 
-    # --- Panel 0: objasnjenje strukture + statistika dataset-a (tekst) ---
+    # --- Panel 0: objasnjenje strukture + statistika dataset-a ---
     ax_text = fig.add_subplot(gs[0, :])
     ax_text.axis("off")
 
@@ -225,7 +222,7 @@ if __name__ == "__main__":
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
         )
 
-    # --- Panel 5: sumarna tabela na dnu (tekst) ---
+    # --- Panel 5: sumarna tabela na dnu ---
     ax_table = fig.add_subplot(gs[5, :])
     ax_table.axis("off")
     table_text = f"{'Dubina':12s}{'Parametri':12s}{'Odnos p/p':12s}{'Final val_loss':16s}{'Final val_acc':16s}{'Final val_F1':12s}\n"

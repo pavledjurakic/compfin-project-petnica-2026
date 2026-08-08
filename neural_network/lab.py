@@ -32,7 +32,7 @@ def load_balanced_split(val_fraction=0.2, fraud_ratio=0.4, seed=SEED, data_path=
     np.random.shuffle(subset_idx)
     x_subset, y_subset = x[subset_idx], y[subset_idx].astype(np.float32)
 
-    rng = np.random.default_rng(seed) # random number generator
+    rng = np.random.default_rng(seed)
     train_parts, val_parts = [], []
     for cls in np.unique(y_subset):
         cls_idx = np.where(y_subset == cls)[0]

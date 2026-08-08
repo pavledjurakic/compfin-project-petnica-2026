@@ -18,7 +18,7 @@ x_normal = x[normal_mask]
 
 print(f"Fraud: {x_fraud.shape[0]:,} redova, Normal: {x_normal.shape[0]:,} redova")
 
-# feature importance redosled iz Random Forest-a (najvaznije prvo), da grafovi budu u tom redu
+# feature importance order from Random Forest, for plots to be in that order
 FEATURE_IMPORTANCE_ORDER = [2, 6, 3, 8, 12, 11, 13, 7, 4, 1, 9, 15, 5, 14, 16, 0, 10]
 
 fig, axes = plt.subplots(5, 4, figsize=(20, 22))
@@ -33,7 +33,6 @@ for plot_idx, col in enumerate(FEATURE_IMPORTANCE_ORDER):
     pct_missing_fraud = (fraud_col == -1).mean() * 100
     pct_missing_normal = (normal_col == -1).mean() * 100
 
-    # zajednicki binovi preko opsega OBE klase (ukljucujuci -1)
     combined_min = min(fraud_col.min(), normal_col.min())
     combined_max = max(fraud_col.max(), normal_col.max())
     bins = np.linspace(combined_min, combined_max, 40)
@@ -50,7 +49,6 @@ for plot_idx, col in enumerate(FEATURE_IMPORTANCE_ORDER):
     ax.legend(fontsize=7)
     ax.tick_params(labelsize=7)
 
-# ugasi neiskoriscene subplot-ove (17 kolona u 5x4=20 slotova)
 for i in range(len(FEATURE_IMPORTANCE_ORDER), len(axes)):
     axes[i].axis("off")
 
@@ -63,9 +61,7 @@ plt.tight_layout()
 plt.savefig(OUT_DIR / "plot_feature_distributions_fraud_vs_normal.png", dpi=100, bbox_inches="tight")
 print(f"\nSlika sacuvana: {OUT_DIR / 'plot_feature_distributions_fraud_vs_normal.png'}")
 
-# ===========================================================
-# Dodatna tabela: prosek/medijana po klasi za svaku kolonu (samo ne-missing vrednosti)
-# ===========================================================
+
 print("\n=== Prosek/medijana po koloni (samo ne-missing, tj. != -1) ===")
 print(f"{'kol':6s} {'fraud_mean':12s} {'normal_mean':12s} {'fraud_med':12s} {'normal_med':12s}")
 for col in range(17):

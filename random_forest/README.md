@@ -10,7 +10,7 @@ klasičan ensemble-of-trees pristup poredi sa neuronskom mrežom na istim podaci
   split (isti pristup kao `neural_network/lab.py`, radi fer poređenja), trenira
   Random Forest, i generiše sve plotove u `plots/`.
 - `feature_distributions.py` — raspodela vrednosti po koloni, fraud vs normal
-  (koje kolone fraud čvorovi imaju sistematski drugačije od normal).
+  (koje kolone/feature-e fraud čvorovi imaju sistematski drugačije od normal).
 
 ## Zašto Random Forest
 

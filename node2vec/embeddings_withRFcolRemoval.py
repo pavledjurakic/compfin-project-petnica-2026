@@ -1,4 +1,6 @@
-"""node2vec embedding vs raw features for fraud classification on subgraph_k30_N1.txt.
+"""
+node2vec embedding vs raw features for fraud classification on subgraph_k30_N1.txt.
+turned out bad for use, since it destorys the dataset essentially.
 """
 
 import sys
@@ -28,6 +30,7 @@ OUT_DIR = Path(__file__).resolve().parent / "plots"
 N_FOLDS = 5
 BEST_DIM = 8
 WALK_CONFIGS = [(10, 5), (10, 20), (40, 5), (40, 20)]  # (walk_length, num_walks)
+TOP_RF_COLS = [2, 6, 3, 8, 12]  # highest Random Forest feature importance
 
 
 def load_subgraph_edges(subgraph_path):
@@ -54,8 +57,15 @@ def compute_embeddings(graph, dimensions, walk_length=80, num_walks=10):
     return {node: model.wv[str(node)] for node in graph.nodes}
 
 
+def engineered_raw_features(x_raw, top_cols=TOP_RF_COLS):
+    """Top-5 RF-important columns + a missing-value count (fraud runs ~30% higher
+    missing rate than normal across almost every column, so the count itself is signal)."""
+    missing_count = (x_raw == -1).sum(axis=1, keepdims=True)
+    return np.concatenate([x_raw[:, top_cols], missing_count], axis=1)
+
+
 def train_model(model, x_train, y_train, x_val, y_val, epochs=20, batch_size=32, learning_rate=0.01, verbose=False):
-    """Returns per-epoch history (train_loss, val_loss, val_acc, val_f1 lists)."""
+    """Returns per-epoch history (train_loss, val_loss, val_acc, val_f1 lists), same shape as lab.py."""
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -111,7 +121,7 @@ def balance_classes(node_ids, labels, fraud_ratio=0.4, seed=SEED):
 
 
 def cross_validate(x, y, n_folds=N_FOLDS, seed=SEED):
-    """Averages the per-epoch history across fold.
+    """
     Also returns out-of-fold probabilities (each example scored only by a model that never
     trained on it) so a single, leakage-free ROC curve can be drawn over the whole dataset."""
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
@@ -154,12 +164,17 @@ def main(subgraph_path, data_path, out_dir):
     print(f"balanced: {len(node_ids)} ({int((labels == 1).sum())} fraud)")
 
     x_raw = x_full[node_ids]
+    x_eng = engineered_raw_features(x_raw)
 
     print(f"\n--- raw features (17-dim) baseline, {N_FOLDS}-fold CV ---")
     raw_hist = cross_validate(x_raw, labels)
     print(f"raw: val_loss={raw_hist['val_loss'][-1]:.4f}  val_acc={raw_hist['val_acc'][-1]*100:.2f}%  val_f1={raw_hist['val_f1'][-1]:.4f}")
 
-    results = {"raw (17-dim)": raw_hist}
+    print(f"\n--- engineered features (top-5 RF cols + missing count, 6-dim), {N_FOLDS}-fold CV ---")
+    eng_hist = cross_validate(x_eng, labels)
+    print(f"engineered: val_loss={eng_hist['val_loss'][-1]:.4f}  val_acc={eng_hist['val_acc'][-1]*100:.2f}%  val_f1={eng_hist['val_f1'][-1]:.4f}")
+
+    results = {"raw (17-dim)": raw_hist, "engineered (6-dim)": eng_hist}
     for walk_length, num_walks in WALK_CONFIGS:
         tag = f"wl={walk_length},nw={num_walks}"
         print(f"\n--- node2vec dim={BEST_DIM}, {tag}, {N_FOLDS}-fold CV ---")
@@ -167,8 +182,13 @@ def main(subgraph_path, data_path, out_dir):
         x_emb = np.array([embeddings[n] for n in node_ids])
 
         emb_hist = cross_validate(x_emb, labels)
-        print(f"embedding: val_loss={emb_hist['val_loss'][-1]:.4f}  val_acc={emb_hist['val_acc'][-1]*100:.2f}%  val_f1={emb_hist['val_f1'][-1]:.4f}")
+        print(f"embedding only: val_loss={emb_hist['val_loss'][-1]:.4f}  val_acc={emb_hist['val_acc'][-1]*100:.2f}%  val_f1={emb_hist['val_f1'][-1]:.4f}")
         results[f"embedding {tag}"] = emb_hist
+
+        x_concat = np.concatenate([x_emb, x_eng], axis=1)
+        concat_hist = cross_validate(x_concat, labels)
+        print(f"embedding+engineered: val_loss={concat_hist['val_loss'][-1]:.4f}  val_acc={concat_hist['val_acc'][-1]*100:.2f}%  val_f1={concat_hist['val_f1'][-1]:.4f}")
+        results[f"embedding+engineered {tag}"] = concat_hist
 
     names = list(results.keys())
     losses = [results[n]["val_loss"][-1] for n in names]
@@ -187,10 +207,10 @@ def main(subgraph_path, data_path, out_dir):
     plt.savefig(out_dir / "embedding_vs_raw.png")
     print(f"\nsaved: {out_dir / 'embedding_vs_raw.png'}")
 
-    # per-epoch curves + ROC for the 2 most relevant configs: raw, best embedding
-    embedding_names = [n for n in names if n.startswith("embedding ")]
+    # per-epoch curves + ROC for the 3 most relevant configs: raw, engineered, best embedding
+    embedding_names = [n for n in names if n.startswith("embedding ") or n.startswith("embedding+engineered ")]
     best_embedding_name = min(embedding_names, key=lambda n: results[n]["val_loss"][-1])
-    curve_names = ["raw (17-dim)", best_embedding_name]
+    curve_names = ["raw (17-dim)", "engineered (6-dim)", best_embedding_name]
     colors = {name: f"C{i}" for i, name in enumerate(curve_names)}  # same color for a config across all 3 panels
 
     fig, axes = plt.subplots(1, 3, figsize=(17, 5))

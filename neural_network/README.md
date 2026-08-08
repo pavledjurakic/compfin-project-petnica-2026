@@ -17,4 +17,4 @@ Logistic regression i mali MLP na sirovim 17 feature-a, treniran na balansiranom
 
 Kroz sve testirane dubine/širine (673 do 34,177 parametara), rezultat se
 dosledno zaglavljuje na ~0.58 val loss / ~66-67% accuracy — plafon je
-informacioni (slab signal u feature-ima), ne arhitekturni.
+u informacijama (slabi signali u feature-ima).

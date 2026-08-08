@@ -1,6 +1,5 @@
-"""Random Forest baseline for fraud classification.
-
-Run with: python random_forest.py
+"""
+Random Forest baseline for fraud classification.
 """
 
 from pathlib import Path

@@ -52,8 +52,8 @@ def standardize(x_train, x_val):
 
 
 class BudgetMLP(nn.Module):
-    """Manja mreza, dizajnirana da stane u preporuceni budzet parametara
-    (~2500-3100, na osnovu train_size/10 pravila za nas dataset)."""
+    """Manja mreza, da stane u preporucenu velicinu parametara - 10x ratio
+    """
 
     def __init__(self, input_dim, hidden_dims=(48, 24), dropout=0.2):
         super().__init__()
@@ -88,7 +88,7 @@ class OriginalMLP(nn.Module):
 
 def compute_accuracy_f1(model, x, y, threshold=0.5):
     """Accuracy i F1 (klasa 1 = fraud = pozitivna) na datom skupu, prag=0.5
-    (opravdano jer je skup balansiran 60/40, ne stvarna 0.42% raspodela)."""
+    """
     model.eval()
     with torch.no_grad():
         logits = model(torch.tensor(x, dtype=torch.float32)).squeeze(1)
@@ -188,9 +188,7 @@ if __name__ == "__main__":
             print(f"  -> FINALNO: val_loss={val_losses[-1]:.4f}  val_acc={val_accs[-1]*100:.2f}%  "
                   f"val_f1={val_f1s[-1]:.4f}  (params={n_params})")
 
-    # ===========================================================
-    # Po JEDAN detaljan plot za SVAKI test case: loss + accuracy + F1 (1x3)
-    # ===========================================================
+
     for (model_name, lr), r in results.items():
         fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
@@ -223,9 +221,7 @@ if __name__ == "__main__":
         plt.savefig(OUT_DIR / fname)
         print(f"Slika sacuvana: {fname}")
 
-    # ===========================================================
-    # Sumarni grid: 2 reda (Budget/Original) x 3 kolone (lr) -- samo loss, za brz pregled
-    # ===========================================================
+    # Sumarni plot: 2 reda (Budget/Original) x 3 kolone (lr) -- samo loss
     fig, axes = plt.subplots(2, 3, figsize=(18, 9), sharey=True)
     for row, (model_name, model_desc, ModelClass) in enumerate(model_configs):
         for col, lr in enumerate(learning_rates):
