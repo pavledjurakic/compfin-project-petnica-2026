@@ -1,43 +1,74 @@
+"""Fraud classification baseline: logistic regression vs a small (1-3-5 layer) MLP.
+"""
+
+from pathlib import Path
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
-from pathlib import Path
 
-from common_data import load_split, standardize, SEED
+SEED = 42 # seed for rng
 
-torch.manual_seed(SEED)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_PATH = REPO_ROOT / "data" / "dgraphfin.npz"
 OUT_DIR = Path(__file__).resolve().parent
 
 
-# ===========================================================
-# 1. Podaci -- balansiran subset (40% fraud / 60% normal) + train/val split
-#    (implementacija u common_data.py, deljena sa svim model_*.py eksperimentima)
-# ===========================================================
-x_train, y_train, x_val, y_val = load_split()
-x_train, x_val = standardize(x_train, x_val)
+def load_balanced_split(val_fraction=0.2, fraud_ratio=0.4, seed=SEED, data_path=DATA_PATH):
+    """All fraud nodes plus a random sample of normal nodes sized to hit fraud_ratio, then a train/val split."""
+    np.random.seed(seed)
+    data = np.load(data_path)
+    x, y = data["x"], data["y"]
 
-print(f"Train: {len(x_train)} ({(y_train == 1).sum()} fraud), Val: {len(x_val)} ({(y_val == 1).sum()} fraud)")
+    fraud_idx = np.where(y == 1)[0]
+    normal_idx_all = np.where(y == 0)[0]
+    n_normal = int(len(fraud_idx) * (1 - fraud_ratio) / fraud_ratio)
+    normal_idx = np.random.choice(normal_idx_all, size=n_normal, replace=False)
+
+    subset_idx = np.concatenate([fraud_idx, normal_idx])
+    np.random.shuffle(subset_idx)
+    x_subset, y_subset = x[subset_idx], y[subset_idx].astype(np.float32)
+
+    rng = np.random.default_rng(seed) # random number generator
+    train_parts, val_parts = [], []
+    for cls in np.unique(y_subset):
+        cls_idx = np.where(y_subset == cls)[0]
+        rng.shuffle(cls_idx)
+        n_val = int(len(cls_idx) * val_fraction)
+        val_parts.append(cls_idx[:n_val])
+        train_parts.append(cls_idx[n_val:])
+    train_idx = np.concatenate(train_parts)
+    val_idx = np.concatenate(val_parts)
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+
+    return x_subset[train_idx], y_subset[train_idx], x_subset[val_idx], y_subset[val_idx]
 
 
-# ===========================================================
-# 2. Modeli -- jedan vektor (x) -> jedan logit
-# ===========================================================
+def standardize(x_train, x_val):
+    mean = x_train.mean(axis=0, keepdims=True)
+    std = x_train.std(axis=0, keepdims=True)
+    std[std == 0] = 1.0
+    return (x_train - mean) / std, (x_val - mean) / std
+
+
 class LogisticRegressionNet(nn.Module):
-    """Najprostiji baseline: linearni sloj, bez skrivenih slojeva."""
+    """Simplest baseline: a linear layer w/o hidden layers."""
 
     def __init__(self, input_dim):
         super().__init__()
         self.fc = nn.Linear(input_dim, 1)
 
     def forward(self, x):
-        return self.fc(x)  # logits (bez sigmoida -- to radi BCEWithLogitsLoss)
+        return self.fc(x)  # logits, no sigmoid -- BCEWithLogitsLoss handles that
 
 
 class MLPNet(nn.Module):
-    """Konfigurabilna MLP -- blok Linear -> BatchNorm1d -> ReLU -> Dropout, ponovljen
-    po hidden_dims. Poslednji sloj je cist Linear (sirovi logit, bez norm/aktivacije)."""
+    """Configurable MLP -- Linear -> BatchNorm1d -> ReLU -> Dropout block, repeated
+    per hidden_dims. Last layer is a plain Linear (raw logit, no norm/activation)."""
 
     def __init__(self, input_dim, hidden_dims=(48, 24, 12), dropout=0.2):
         super().__init__()
@@ -51,16 +82,13 @@ class MLPNet(nn.Module):
                 nn.Dropout(dropout),
             ]
             prev_dim = h
-        layers.append(nn.Linear(prev_dim, 1))  # izlazni logit
+        layers.append(nn.Linear(prev_dim, 1))
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.net(x)  # logits
+        return self.net(x)
 
 
-# ===========================================================
-# 3. Trening petlja -- belezi train i val loss po epohi
-# ===========================================================
 def train_model(model, x_train, y_train, x_val, y_val, epochs=20, batch_size=256, learning_rate=1e-3):
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -79,7 +107,6 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=20, batch_size=256
     train_losses, val_losses = [], []
 
     for epoch in range(epochs):
-        # --- trening korak ---
         model.train()
         running_loss = 0.0
         for xb, yb in train_loader:
@@ -92,7 +119,6 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=20, batch_size=256
         train_loss = running_loss / len(x_train)
         train_losses.append(train_loss)
 
-        # --- validacija (bez gradijenta) ---
         model.eval()
         running_val_loss = 0.0
         with torch.no_grad():
@@ -108,22 +134,21 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=20, batch_size=256
     return model, train_losses, val_losses
 
 
-if __name__ == "__main__":
-    input_dim = x_train.shape[1]
+def main():
+    x_train, y_train, x_val, y_val = load_balanced_split()
+    x_train, x_val = standardize(x_train, x_val)
+    print(f"Train: {len(x_train)} ({(y_train == 1).sum()} fraud), Val: {len(x_val)} ({(y_val == 1).sum()} fraud)")
 
     print("\n--- Logisticka regresija ---")
-    logreg = LogisticRegressionNet(input_dim)
+    logreg = LogisticRegressionNet(x_train.shape[1])
     logreg, logreg_train_losses, logreg_val_losses = train_model(logreg, x_train, y_train, x_val, y_val)
 
-    print("\n--- MLP (5 slojeva: 128,128,64,64,32) ---")
-    mlp = MLPNet(input_dim)
+    print("\n--- MLP (3 sloja: 48,24,12) ---")
+    mlp = MLPNet(x_train.shape[1])
     n_params = sum(p.numel() for p in mlp.parameters())
     print(f"Broj parametara: {n_params}")
     mlp, mlp_train_losses, mlp_val_losses = train_model(mlp, x_train, y_train, x_val, y_val)
 
-    # ===========================================================
-    # 4. Plot: train vs val loss po epohi, 2 subplota (logreg | MLP)
-    # ===========================================================
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
 
     axes[0].plot(logreg_train_losses, label="train loss", color="tab:blue")
@@ -143,3 +168,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig(OUT_DIR / "plot_training_loss.png")
     print(f"\nSlika sacuvana: {OUT_DIR / 'plot_training_loss.png'}")
+
+
+if __name__ == "__main__":
+    main()

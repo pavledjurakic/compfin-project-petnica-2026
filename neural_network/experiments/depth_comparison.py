@@ -1,8 +1,6 @@
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,10 +8,49 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-from common_data import load_split, standardize, SEED
-
+SEED = 42
 torch.manual_seed(SEED)
-OUT_DIR = Path(__file__).resolve().parent
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_PATH = REPO_ROOT / "data" / "dgraphfin.npz"
+OUT_DIR = Path(__file__).resolve().parent / "plots"
+
+
+def load_split(val_fraction=0.2, fraud_ratio=0.4, seed=SEED, data_path=DATA_PATH):
+    np.random.seed(seed)
+    data = np.load(data_path)
+    x, y = data["x"], data["y"]
+
+    fraud_idx = np.where(y == 1)[0]
+    normal_idx_all = np.where(y == 0)[0]
+    n_normal = int(len(fraud_idx) * (1 - fraud_ratio) / fraud_ratio)
+    normal_idx = np.random.choice(normal_idx_all, size=n_normal, replace=False)
+
+    subset_idx = np.concatenate([fraud_idx, normal_idx])
+    np.random.shuffle(subset_idx)
+    x_subset, y_subset = x[subset_idx], y[subset_idx].astype(np.float32)
+
+    rng = np.random.default_rng(seed)
+    train_parts, val_parts = [], []
+    for cls in np.unique(y_subset):
+        cls_idx = np.where(y_subset == cls)[0]
+        rng.shuffle(cls_idx)
+        n_val = int(len(cls_idx) * val_fraction)
+        val_parts.append(cls_idx[:n_val])
+        train_parts.append(cls_idx[n_val:])
+    train_idx = np.concatenate(train_parts)
+    val_idx = np.concatenate(val_parts)
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+
+    return x_subset[train_idx], y_subset[train_idx], x_subset[val_idx], y_subset[val_idx]
+
+
+def standardize(x_train, x_val):
+    mean = x_train.mean(axis=0, keepdims=True)
+    std = x_train.std(axis=0, keepdims=True)
+    std[std == 0] = 1.0
+    return (x_train - mean) / std, (x_val - mean) / std
 
 
 class BlockMLP(nn.Module):
@@ -143,7 +180,7 @@ if __name__ == "__main__":
     explanation = (
         "STRUKTURA MREZE: blok  [ Linear -> BatchNorm1d -> ReLU -> Dropout(0.2) ]  se ponavlja N puta (N = broj 'blokova' ispod),\n"
         "sirina slojeva opada sa dubinom (npr. 5 blokova = 128,128,64,64,32), a na kraju ide JEDAN cist Linear sloj (sirov logit, bez norm/aktivacije).\n\n"
-        f"DATASET (balansiran 60/40 subset, common_data.py):\n"
+        f"DATASET (balansiran 60/40 subset, data/dgraphfin.npz):\n"
         f"  Trening skup:    {n_train:,} primera   ({n_train_fraud:,} fraud / {n_train - n_train_fraud:,} normal  ->  {n_train_fraud/n_train*100:.1f}% / {(n_train-n_train_fraud)/n_train*100:.1f}%)\n"
         f"  Validacioni skup: {n_val:,} primera   ({n_val_fraud:,} fraud / {n_val - n_val_fraud:,} normal  ->  {n_val_fraud/n_val*100:.1f}% / {(n_val-n_val_fraud)/n_val*100:.1f}%)\n\n"
         "10x PRAVILO: preporuceno je da trening primeri budu bar 10x broj parametara modela (primeri/parametri >= 10) da bi se izbegao rizik od overfitting-a.\n"

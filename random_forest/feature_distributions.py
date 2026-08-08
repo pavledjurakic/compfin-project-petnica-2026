@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-DATA_PATH = r"C:\Users\BG Computers\OneDrive\Radna površina\CompFin - projekat\dgraphfin.npz"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_PATH = REPO_ROOT / "data" / "dgraphfin.npz"
 OUT_DIR = Path(__file__).resolve().parent / "plots"
 OUT_DIR.mkdir(exist_ok=True)
 

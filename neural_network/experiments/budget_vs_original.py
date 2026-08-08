@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -5,10 +6,49 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from common_data import load_split, standardize, SEED
-
+SEED = 42
 torch.manual_seed(SEED)
-OUT_DIR = Path(__file__).resolve().parent
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_PATH = REPO_ROOT / "data" / "dgraphfin.npz"
+OUT_DIR = Path(__file__).resolve().parent / "plots"
+
+
+def load_split(val_fraction=0.2, fraud_ratio=0.4, seed=SEED, data_path=DATA_PATH):
+    np.random.seed(seed)
+    data = np.load(data_path)
+    x, y = data["x"], data["y"]
+
+    fraud_idx = np.where(y == 1)[0]
+    normal_idx_all = np.where(y == 0)[0]
+    n_normal = int(len(fraud_idx) * (1 - fraud_ratio) / fraud_ratio)
+    normal_idx = np.random.choice(normal_idx_all, size=n_normal, replace=False)
+
+    subset_idx = np.concatenate([fraud_idx, normal_idx])
+    np.random.shuffle(subset_idx)
+    x_subset, y_subset = x[subset_idx], y[subset_idx].astype(np.float32)
+
+    rng = np.random.default_rng(seed)
+    train_parts, val_parts = [], []
+    for cls in np.unique(y_subset):
+        cls_idx = np.where(y_subset == cls)[0]
+        rng.shuffle(cls_idx)
+        n_val = int(len(cls_idx) * val_fraction)
+        val_parts.append(cls_idx[:n_val])
+        train_parts.append(cls_idx[n_val:])
+    train_idx = np.concatenate(train_parts)
+    val_idx = np.concatenate(val_parts)
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+
+    return x_subset[train_idx], y_subset[train_idx], x_subset[val_idx], y_subset[val_idx]
+
+
+def standardize(x_train, x_val):
+    mean = x_train.mean(axis=0, keepdims=True)
+    std = x_train.std(axis=0, keepdims=True)
+    std[std == 0] = 1.0
+    return (x_train - mean) / std, (x_val - mean) / std
 
 
 class BudgetMLP(nn.Module):
